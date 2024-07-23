@@ -1,9 +1,9 @@
 use blockifier::{
-    blockifier::block::BlockInfo,
+    block::BlockInfo,
     context::{BlockContext, ChainInfo, FeeTokenAddresses},
     execution::contract_class::{ClassInfo, ContractClass, ContractClassV0, ContractClassV0Inner},
     state::{
-        cached_state::CachedState,
+        cached_state::{CachedState, GlobalContractCache},
         errors::StateError,
         state_api::{StateReader, StateResult},
     },
@@ -44,24 +44,24 @@ impl RpcStateReader {
 
 impl StateReader for RpcStateReader {
     fn get_storage_at(
-        &self,
+        &mut self,
         contract_address: starknet_api::core::ContractAddress,
         key: StorageKey,
     ) -> StateResult<StarkFelt> {
         Ok(self.0.get_storage_at(&contract_address, &key))
     }
 
-    fn get_nonce_at(&self, contract_address: ContractAddress) -> StateResult<Nonce> {
+    fn get_nonce_at(&mut self, contract_address: ContractAddress) -> StateResult<Nonce> {
         Ok(Nonce(self.0.get_nonce_at(&contract_address)))
     }
 
-    fn get_class_hash_at(&self, contract_address: ContractAddress) -> StateResult<ClassHash> {
+    fn get_class_hash_at(&mut self, contract_address: ContractAddress) -> StateResult<ClassHash> {
         Ok(self.0.get_class_hash_at(&contract_address))
     }
 
     /// Returns the contract class of the given class hash.
     fn get_compiled_contract_class(
-        &self,
+        &mut self,
         class_hash: starknet_api::core::ClassHash,
     ) -> StateResult<ContractClass> {
         Ok(match self.0.get_contract_class(&class_hash) {
@@ -95,7 +95,8 @@ impl StateReader for RpcStateReader {
                     cairo_lang_starknet_classes::casm_contract_class::CasmContractClass::from_contract_class(sierra_cc, false, usize::MAX).unwrap();
                     ContractClass::V1(casm_cc.try_into().unwrap())
                 } else {
-                    ContractClass::V1Sierra(sierra_cc.try_into().unwrap())
+                    panic!("ContractClass::V1Sierra not supported in the blockifier we're using");
+                    // ContractClass::V1Sierra(sierra_cc.try_into().unwrap())
                 }
             }
             None => {
@@ -107,7 +108,7 @@ impl StateReader for RpcStateReader {
     }
 
     /// Returns the compiled class hash of the given class hash.
-    fn get_compiled_class_hash(&self, class_hash: ClassHash) -> StateResult<CompiledClassHash> {
+    fn get_compiled_class_hash(&mut self, class_hash: ClassHash) -> StateResult<CompiledClassHash> {
         Ok(CompiledClassHash(
             self.0
                 .get_class_hash_at(&ContractAddress(class_hash.0.try_into().unwrap()))
@@ -148,7 +149,7 @@ pub fn execute_tx(
     let receipt = rpc_reader.0.get_transaction_receipt(&tx_hash).unwrap();
 
     // Create state from RPC reader
-    let mut state = CachedState::new(rpc_reader);
+    let mut state = CachedState::new(rpc_reader, GlobalContractCache::new(128));
 
     // let fee_token_address =
     //     contract_address!("049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
@@ -187,7 +188,9 @@ pub fn execute_tx(
     let block_context = BlockContext::new_unchecked(
         &block_info,
         &chain_info,
-        &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
+        // TODO: probably not going to work
+        &VersionedConstants::latest_constants(),
+        // &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
     );
     // let block_context = BlockContext {
     //     chain_id,
@@ -237,8 +240,8 @@ pub fn execute_tx(
         }
         SNTransaction::Declare(tx) => {
             // Fetch the contract_class from the next block (as we don't have it in the previous one)
-            let next_block_state_reader = RpcStateReader(
-                RpcState::new_rpc(network, (block_number.next()).unwrap().into()).unwrap(),
+            let mut next_block_state_reader = RpcStateReader(
+                RpcState::new_rpc(network, (block_number.next()).into()).unwrap(),
             );
             let contract_class = next_block_state_reader
                 .get_compiled_contract_class(tx.class_hash())
@@ -281,7 +284,7 @@ fn calculate_class_info_for_testing(contract_class: ContractClass) -> ClassInfo 
     let sierra_program_length = match contract_class {
         ContractClass::V0(_) => 0,
         ContractClass::V1(_) => 100,
-        ContractClass::V1Sierra(_) => 100,
+        // ContractClass::V1Sierra(_) => 100, // not supported until later blockifier versions
     };
     ClassInfo::new(&contract_class, sierra_program_length, 100).unwrap()
 }
@@ -312,7 +315,9 @@ pub fn execute_tx_configurable_with_state(
     let block_context = BlockContext::new_unchecked(
         &block_info,
         &chain_info,
-        &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
+        // TODO: probably not going to work
+        &VersionedConstants::latest_constants(),
+        // &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
     );
 
     // Get transaction before giving ownership of the reader
@@ -489,7 +494,9 @@ pub fn fetch_block_context(state: &RpcState, block_number: BlockNumber) -> Block
             chain_id: state.get_chain_name(),
             fee_token_addresses: Default::default(),
         },
-        &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
+        // TODO: probably not going to work
+        &VersionedConstants::latest_constants(),
+        // &VersionedConstants::latest_constants_with_overrides(u32::MAX, usize::MAX),
     )
 }
 

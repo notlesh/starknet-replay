@@ -1,4 +1,4 @@
-use blockifier::blockifier::block::GasPrices;
+use blockifier::block::GasPrices;
 use cairo_vm::vm::runners::{
     builtin_runner::{
         BITWISE_BUILTIN_NAME, EC_OP_BUILTIN_NAME, HASH_BUILTIN_NAME, KECCAK_BUILTIN_NAME,

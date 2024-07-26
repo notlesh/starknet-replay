@@ -1,5 +1,5 @@
 use blockifier::{
-    block::BlockInfo,
+    block::{BlockInfo, GasPrices},
     context::{BlockContext, ChainInfo, FeeTokenAddresses},
     execution::contract_class::{ClassInfo, ContractClass, ContractClassV0, ContractClassV0Inner},
     state::{
@@ -27,7 +27,7 @@ use starknet_api::{
     state::StorageKey,
     transaction::{Transaction as SNTransaction, TransactionHash},
 };
-use std::sync::Arc;
+use std::{num::NonZeroU128, sync::Arc};
 
 use crate::{
     rpc_state::{RpcBlockInfo, RpcChain, RpcState, RpcTransactionReceipt, TransactionTrace},
@@ -388,7 +388,12 @@ pub fn execute_tx_configurable(
     let tx_hash =
         TransactionHash(StarkFelt::try_from(tx_hash.strip_prefix("0x").unwrap()).unwrap());
     let tx = state.state.0.get_transaction(&tx_hash).unwrap();
-    let gas_price = state.state.0.get_gas_price(block_number.0).unwrap();
+    let gas_price = state.state.0.get_gas_price(block_number.0).unwrap_or(GasPrices {
+        eth_l1_gas_price: NonZeroU128::new(u64::MAX as u128).unwrap(),
+        strk_l1_gas_price: NonZeroU128::new(u64::MAX as u128).unwrap(),
+        eth_l1_data_gas_price: NonZeroU128::new(u64::MAX as u128).unwrap(),
+        strk_l1_data_gas_price: NonZeroU128::new(u64::MAX as u128).unwrap(),
+    });
     let RpcBlockInfo {
         block_timestamp,
         sequencer_address,
